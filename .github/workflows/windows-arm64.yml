@@ -67,6 +67,7 @@ jobs:
       - name: Bundle runtime
         run: |
           set -euo pipefail
+          ROOT="$PWD"
           PREFIX="$PWD/dist"
           cd "$PREFIX/bin"
           pending=$(find . -maxdepth 1 -type f -name '*.exe' -printf '%f ')
@@ -93,8 +94,8 @@ jobs:
           fi
           cp -f /clangarm64/share/glib-2.0/schemas/gschemas.compiled "$PREFIX/share/glib-2.0/schemas/"
           cp -f /clangarm64/etc/ssl/certs/ca-bundle.crt "$PREFIX/ssl/certs/"
-          cp -f platforms/windows/installer_msys2/freeciv-gtk4.cmd "$PREFIX/bin/"
-          cp -f platforms/windows/installer_msys2/freeciv-server.cmd "$PREFIX/bin/"
+          cp -f "$ROOT/platforms/windows/installer_msys2/freeciv-gtk4.cmd" "$PREFIX/bin/"
+          cp -f "$ROOT/platforms/windows/installer_msys2/freeciv-server.cmd" "$PREFIX/bin/"
           # Windows layout used by -Dfollowtag=windows-S3_4: executables and data/ side by side
           mv "$PREFIX/bin/"* "$PREFIX/"
           rmdir "$PREFIX/bin"
