@@ -1,0 +1,137 @@
+name: Windows ARM64
+
+on:
+  push:
+    branches: [windows-arm64]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  gtk4:
+    name: gtk4 ARM64
+    runs-on: windows-11-arm
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANGARM64
+          update: true
+          cache: true
+          install: >-
+            gettext
+            python
+            mingw-w64-clang-aarch64-toolchain
+            mingw-w64-clang-aarch64-meson
+            mingw-w64-clang-aarch64-ninja
+            mingw-w64-clang-aarch64-pkgconf
+            mingw-w64-clang-aarch64-gtk4
+            mingw-w64-clang-aarch64-icu
+            mingw-w64-clang-aarch64-curl
+            mingw-w64-clang-aarch64-SDL3_mixer
+            mingw-w64-clang-aarch64-sqlite3
+            mingw-w64-clang-aarch64-python
+            mingw-w64-clang-aarch64-tolua
+
+      - name: Configure and build
+        run: |
+          set -euo pipefail
+          test -d /clangarm64
+          meson setup build \
+            --prefix="$PWD/dist" \
+            -Dbuildtype=release \
+            -Dclients=gtk4 \
+            -Dfcmp=gtk4 \
+            -Dtools=manual,ruleup \
+            -Dreadline=false \
+            -Dsyslua=false \
+            -Dsys-tolua-cmd=true \
+            -Dmwand=false \
+            -Daudio=sdl3 \
+            -Dfollowtag=windows-S3_4 \
+            -Dgitrev=true \
+            -Dcacert-path=./ssl/certs/ca-bundle.crt
+          meson compile -C build
+          meson install -C build
+
+      - name: Bundle runtime
+        run: |
+          set -euo pipefail
+          PREFIX="$PWD/dist"
+          mkdir -p "$PREFIX/bin"
+          copy_new() {
+            ldd "$1" | sed -n 's/.*=> \(\/clangarm64\/[^ ]*\) (.*/\1/p' | while read -r dep; do
+              base=$(basename "$dep")
+              if [ ! -e "$PREFIX/bin/$base" ]; then
+                cp -f "$dep" "$PREFIX/bin/$base"
+              fi
+            done
+          }
+          for _ in 1 2 3 4 5 6 7 8; do
+            find "$PREFIX/bin" -type f \( -name '*.exe' -o -name '*.dll' \) | while read -r bin; do
+              copy_new "$bin"
+            done
+          done
+          cp -f /clangarm64/bin/gdbus.exe "$PREFIX/bin/" 
+          cp -f /clangarm64/bin/gspawn*.exe "$PREFIX/bin/" || true
+          mkdir -p "$PREFIX/lib/gdk-pixbuf-2.0" "$PREFIX/share/glib-2.0/schemas" "$PREFIX/ssl/certs"
+          cp -a /clangarm64/lib/gdk-pixbuf-2.0/. "$PREFIX/lib/gdk-pixbuf-2.0/"
+          if [ -d /clangarm64/lib/gtk-4.0 ]; then
+            mkdir -p "$PREFIX/lib/gtk-4.0"
+            cp -a /clangarm64/lib/gtk-4.0/. "$PREFIX/lib/gtk-4.0/"
+          fi
+          cp -f /clangarm64/share/glib-2.0/schemas/gschemas.compiled "$PREFIX/share/glib-2.0/schemas/"
+          cp -f /clangarm64/etc/ssl/certs/ca-bundle.crt "$PREFIX/ssl/certs/"
+          cp -f platforms/windows/installer_msys2/freeciv-gtk4.cmd "$PREFIX/bin/"
+          cp -f platforms/windows/installer_msys2/freeciv-server.cmd "$PREFIX/bin/"
+          # Windows layout used by -Dfollowtag=windows-S3_4: executables and data/ side by side
+          mv "$PREFIX/bin/"* "$PREFIX/"
+          rmdir "$PREFIX/bin"
+          mv "$PREFIX/share/freeciv" "$PREFIX/data"
+
+      - name: Verify ARM64 and package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $exe = Get-Item dist\freeciv-gtk4.exe
+          $bytes = [System.IO.File]::ReadAllBytes($exe.FullName)
+          $pe = [BitConverter]::ToInt32($bytes, 0x3C)
+          $machine = [BitConverter]::ToUInt16($bytes, $pe + 4)
+          if ($machine -ne 0xAA64) { throw ("freeciv-gtk4.exe is not ARM64 (0x{0:X4})" -f $machine) }
+          New-Item -ItemType Directory -Force -Path package | Out-Null
+          & 7z.exe a -bb1 -tzip package\Freeciv-winarm64-gtk4.zip .\dist\*
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Freeciv-winarm64-gtk4
+          path: package/Freeciv-winarm64-gtk4.zip
+          if-no-files-found: error
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+          $notes = @"
+          Unofficial native Windows ARM64 build of Freeciv ${{ github.sha }}.
+
+          This is the gtk4 client and the server. Launch freeciv-gtk4.exe.
+          "@
+          $zip = "package/Freeciv-winarm64-gtk4.zip"
+          $tag = "windows-arm64"
+          gh release view $tag
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $zip --clobber
+          } else {
+            gh release create $tag $zip --target windows-arm64 --title "Windows ARM64 gtk4" --notes $notes --prerelease
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
