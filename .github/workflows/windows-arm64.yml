@@ -27,14 +27,14 @@ jobs:
           install: >-
             gettext
             python
-            mingw-w64-clang-aarch64-toolchain
+            mingw-w64-clang-aarch64-clang
             mingw-w64-clang-aarch64-meson
             mingw-w64-clang-aarch64-ninja
             mingw-w64-clang-aarch64-pkgconf
             mingw-w64-clang-aarch64-gtk4
             mingw-w64-clang-aarch64-icu
             mingw-w64-clang-aarch64-curl
-            mingw-w64-clang-aarch64-SDL3_mixer
+            mingw-w64-clang-aarch64-sdl3-mixer
             mingw-w64-clang-aarch64-sqlite3
             mingw-w64-clang-aarch64-python
             mingw-w64-clang-aarch64-tolua
