@@ -73,7 +73,12 @@ jobs:
           ROOT="$PWD"
           PREFIX="$PWD/dist"
           mkdir -p "$PREFIX/plugins" "$PREFIX/ssl/certs"
-          cp -a /clangarm64/share/qt6/plugins/. "$PREFIX/plugins/"
+          for plugdir in platforms styles imageformats iconengines tls platformthemes; do
+            if [ -d "/clangarm64/share/qt6/plugins/$plugdir" ]; then
+              mkdir -p "$PREFIX/plugins/$plugdir"
+              cp -a "/clangarm64/share/qt6/plugins/$plugdir/." "$PREFIX/plugins/$plugdir/"
+            fi
+          done
           cp -f /clangarm64/etc/ssl/certs/ca-bundle.crt "$PREFIX/ssl/certs/"
           printf '[Paths]\nPlugins = plugins\n' > "$PREFIX/bin/qt.conf"
           cp -f "$ROOT/platforms/windows/installer_msys2/freeciv-qt.cmd" "$PREFIX/bin/"
@@ -81,7 +86,7 @@ jobs:
           cp -f "$ROOT/platforms/windows/installer_msys2/freeciv-server.cmd" "$PREFIX/bin/"
           cd "$PREFIX/bin"
           pending=$(find . -maxdepth 1 -type f -name '*.exe' -printf '%f ')
-          find "$PREFIX/plugins" -type f -name '*.dll' -printf '%p ' >> /tmp/qt-plugins.txt || true
+          pending="$pending $(find "$PREFIX/plugins" -type f -name '*.dll')"
           while [ -n "${pending// /}" ]; do
             next=""
             for bin in $pending; do
@@ -95,16 +100,6 @@ jobs:
             done
             pending=$next
           done
-          if [ -f /tmp/qt-plugins.txt ]; then
-            for plug in $(cat /tmp/qt-plugins.txt); do
-              deps=$(ldd "$plug" | sed -n 's/.*=> \/clangarm64\/bin\/\([^ ]*\).*/\1/p' || true)
-              for dep in $deps; do
-                if [ ! -e "$PREFIX/bin/$dep" ]; then
-                  cp -f "/clangarm64/bin/$dep" "$PREFIX/bin/"
-                fi
-              done
-            done
-          fi
           mv "$PREFIX/bin/"* "$PREFIX/"
           rmdir "$PREFIX/bin"
           mv "$PREFIX/share/freeciv" "$PREFIX/data"
