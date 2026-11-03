@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: windows-arm64
+  cancel-in-progress: true
+
 jobs:
   gtk4:
     name: gtk4 ARM64
@@ -64,19 +68,20 @@ jobs:
         run: |
           set -euo pipefail
           PREFIX="$PWD/dist"
-          mkdir -p "$PREFIX/bin"
-          copy_new() {
-            ldd "$1" | sed -n 's/.*=> \(\/clangarm64\/[^ ]*\) (.*/\1/p' | while read -r dep; do
-              base=$(basename "$dep")
-              if [ ! -e "$PREFIX/bin/$base" ]; then
-                cp -f "$dep" "$PREFIX/bin/$base"
-              fi
+          cd "$PREFIX/bin"
+          pending=$(find . -maxdepth 1 -type f -name '*.exe' -printf '%f ')
+          while [ -n "${pending// /}" ]; do
+            next=""
+            for bin in $pending; do
+              deps=$(ldd "$bin" | sed -n 's/.*=> \/clangarm64\/bin\/\([^ ]*\).*/\1/p' || true)
+              for dep in $deps; do
+                if [ ! -e "$dep" ]; then
+                  cp -f "/clangarm64/bin/$dep" .
+                  next="$next $dep"
+                fi
+              done
             done
-          }
-          for _ in 1 2 3 4 5 6 7 8; do
-            find "$PREFIX/bin" -type f \( -name '*.exe' -o -name '*.dll' \) | while read -r bin; do
-              copy_new "$bin"
-            done
+            pending=$next
           done
           cp -f /clangarm64/bin/gdbus.exe "$PREFIX/bin/" 
           cp -f /clangarm64/bin/gspawn*.exe "$PREFIX/bin/" || true
